@@ -1,0 +1,29 @@
+# Node
+node_modules/
+dist/
+build/
+
+# PNPM
+.pnpm-store/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Logs
+logs/
+*.log
+
+# Docker
+data/
+postgres_data/
+
+# OS
+.DS_Store
+Thumbs.db

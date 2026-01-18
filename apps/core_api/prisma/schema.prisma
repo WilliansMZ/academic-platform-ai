@@ -1,0 +1,818 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+
+/**
+ * =========================
+ * ENUMS
+ * =========================
+ */
+
+enum Role {
+  INSTITUTION_ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum InstitutionStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum SectionStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  DROPPED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  JUSTIFIED
+}
+
+enum RiskSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum RiskStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  DISMISSED
+}
+
+enum RiskReasonCode {
+  DROP_SCORE
+  LOW_ATTENDANCE
+  BOTH
+}
+
+enum AssignmentStatus {
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum SenderRole {
+  STUDENT
+  TUTOR
+  SYSTEM
+}
+
+enum MessageType {
+  TEXT
+  AUDIO
+  IMAGE
+  DOC
+}
+
+enum Emotion {
+  CALM
+  FRUSTRATED
+  ANXIOUS
+  MOTIVATED
+  CONFUSED
+  OTHER
+}
+
+enum DifficultyType {
+  CONCEPTUAL
+  PROCEDURAL
+  ATTENTION
+  LANGUAGE
+  FOUNDATIONS
+  OTHER
+}
+
+enum LearningStrategy {
+  EXAMPLES
+  THEORY
+  PRACTICE
+  STEP_BY_STEP
+  VISUAL
+  OTHER
+}
+
+enum TeacherSectionRole {
+  PRIMARY
+  ASSISTANT
+}
+
+enum NotificationType {
+  RISK_ALERT
+  GRADE_PUBLISHED
+  TUTOR_ASSIGNED
+  TUTOR_COMPLETED
+  GENERAL
+}
+
+/**
+ * =========================
+ * CORE: Institutions + Users
+ * =========================
+ */
+
+model Institution {
+  id        String            @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String            @db.VarChar(80)
+  status    InstitutionStatus @default(ACTIVE)
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  settings InstitutionSettings?
+
+  users    User[]
+  years    AcademicYear[]
+  periods  Period[] // ✅ inverse para Period.institution
+  subjects Subject[]
+  sections Section[]
+  sessions Session[]
+
+  enrollments     Enrollment[]
+  attendances     Attendance[]
+  grades          SessionGrade[]
+  gradeChangeLogs GradeChangeLog[] // ✅ inverse para GradeChangeLog.institution
+
+  riskAlerts RiskAlert[]
+
+  tutoringAssignments TutoringAssignment[]
+  tutoringMessages    TutoringMessage[]
+
+  events        AppEvent[]
+  notifications Notification[]
+
+  // Aggregates
+  sectionWeeklyMetrics SectionWeeklyMetric[]
+  studentRiskSnapshots StudentRiskSnapshot[]
+  topicDifficultyStats TopicDifficultyStat[]
+
+  @@unique([slug])
+  @@map("institutions")
+}
+
+model InstitutionSettings {
+  institutionId   String  @id @map("institution_id") @db.Uuid
+  gradingScaleMax Decimal @default(20) @map("grading_scale_max") @db.Decimal(5, 2)
+
+  riskDropThreshold       Decimal @default(5) @map("risk_drop_threshold") @db.Decimal(5, 2)
+  riskWindowSessions      Int     @default(4) @map("risk_window_sessions")
+  riskMinSessionsRequired Int     @default(3) @map("risk_min_sessions_required")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@map("institution_settings")
+}
+
+model User {
+  id            String @id @default(uuid()) @db.Uuid
+  institutionId String @map("institution_id") @db.Uuid
+
+  role         Role
+  email        String? @db.VarChar(255)
+  username     String? @db.VarChar(80)
+  phoneE164    String? @map("phone_e164") @db.VarChar(20)
+  passwordHash String? @map("password_hash")
+  isActive     Boolean @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+
+  teacherProfile TeacherProfile?
+  studentProfile StudentProfile?
+
+  refreshTokens RefreshToken[]
+
+  // Academic relations
+  primarySections     Section[]        @relation("primary_teacher")
+  sectionTeacherLinks SectionTeacher[]
+  createdSessions     Session[]        @relation("session_created_by")
+
+  enrollments   Enrollment[]   @relation("student_enrollments")
+  attendances   Attendance[]   @relation("student_attendance")
+  sessionGrades SessionGrade[] @relation("student_session_grades")
+
+  gradedBy     SessionGrade[]   @relation("graded_by")
+  gradeChanges GradeChangeLog[] @relation("grade_changed_by")
+
+  // Risk
+  riskAlerts   RiskAlert[] @relation("risk_student")
+  riskResolved RiskAlert[] @relation("risk_resolved_by")
+
+  // Tutoring
+  tutoringAssignmentsAsStudent  TutoringAssignment[] @relation("tutoring_student")
+  tutoringAssignmentsAssignedBy TutoringAssignment[] @relation("tutoring_assigned_by")
+
+  // Events
+  appEventsAsActor   AppEvent[] @relation("event_actor")
+  appEventsAsStudent AppEvent[] @relation("event_student")
+
+  // Aggregates
+  studentRiskSnapshots StudentRiskSnapshot[] // ✅ inverse para StudentRiskSnapshot.student
+
+  notifications Notification[]
+
+  @@unique([institutionId, email])
+  @@unique([institutionId, username])
+  @@unique([institutionId, phoneE164])
+  @@index([institutionId, role])
+  @@map("users")
+}
+
+model RefreshToken {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  tokenHash String   @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model TeacherProfile {
+  userId    String @id @map("user_id") @db.Uuid
+  fullName  String @map("full_name")
+  phone     String?
+  specialty String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("teacher_profiles")
+}
+
+model StudentProfile {
+  userId       String @id @map("user_id") @db.Uuid
+  fullName     String @map("full_name")
+  contactPhone String? @map("contact_phone")
+
+  gradeLevel   String? @map("grade_level")
+  sectionLabel String? @map("section_label")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("student_profiles")
+}
+
+/**
+ * =========================
+ * ACADEMIC: years, periods, subjects, sections
+ * =========================
+ */
+
+model AcademicYear {
+  id            String @id @default(uuid()) @db.Uuid
+  institutionId String @map("institution_id") @db.Uuid
+
+  name      String
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+  isCurrent Boolean  @default(false) @map("is_current")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  periods     Period[]
+  sections    Section[]
+
+  @@unique([institutionId, name])
+  @@index([institutionId, isCurrent])
+  @@map("academic_years")
+}
+
+model Period {
+  id             String @id @default(uuid()) @db.Uuid
+  institutionId  String @map("institution_id") @db.Uuid
+  academicYearId String @map("academic_year_id") @db.Uuid
+
+  name      String
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  sessions Session[]
+
+  @@unique([academicYearId, name])
+  @@index([institutionId, academicYearId])
+  @@map("periods")
+}
+
+model Subject {
+  id            String @id @default(uuid()) @db.Uuid
+  institutionId String @map("institution_id") @db.Uuid
+
+  name String
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  sections    Section[]
+
+  @@unique([institutionId, name])
+  @@index([institutionId])
+  @@map("subjects")
+}
+
+model Section {
+  id             String @id @default(uuid()) @db.Uuid
+  institutionId  String @map("institution_id") @db.Uuid
+  academicYearId String @map("academic_year_id") @db.Uuid
+  subjectId      String @map("subject_id") @db.Uuid
+
+  gradeLevel String @map("grade_level")
+  groupLabel String @map("group_label")
+
+  primaryTeacherId String        @map("primary_teacher_id") @db.Uuid
+  status           SectionStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  primaryTeacher User @relation("primary_teacher", fields: [primaryTeacherId], references: [id], onDelete: Restrict)
+
+  teachers    SectionTeacher[]
+  enrollments Enrollment[]
+  sessions    Session[]
+
+  riskAlerts          RiskAlert[]
+  tutoringAssignments TutoringAssignment[]
+
+  // ✅ inverse relations solicitadas por Prisma
+  appEvents            AppEvent[] // AppEvent.section
+  studentRiskSnapshots StudentRiskSnapshot[] // StudentRiskSnapshot.section
+
+  // Aggregates
+  weeklyMetrics SectionWeeklyMetric[]
+  topicStats    TopicDifficultyStat[]
+
+  @@unique([institutionId, academicYearId, subjectId, gradeLevel, groupLabel, primaryTeacherId])
+  @@index([institutionId, academicYearId])
+  @@index([primaryTeacherId])
+  @@map("sections")
+}
+
+model SectionTeacher {
+  sectionId String             @map("section_id") @db.Uuid
+  teacherId String             @map("teacher_id") @db.Uuid
+  role      TeacherSectionRole @default(ASSISTANT)
+
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  teacher User    @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+
+  @@id([sectionId, teacherId])
+  @@index([teacherId])
+  @@map("section_teachers")
+}
+
+model Enrollment {
+  id            String @id @default(uuid()) @db.Uuid
+  institutionId String @map("institution_id") @db.Uuid
+  sectionId     String @map("section_id") @db.Uuid
+  studentId     String @map("student_id") @db.Uuid
+
+  enrolledAt DateTime         @default(now()) @map("enrolled_at")
+  status     EnrollmentStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  section     Section     @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  student     User        @relation("student_enrollments", fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([sectionId, studentId])
+  @@index([studentId])
+  @@index([sectionId, status])
+  @@map("enrollments")
+}
+
+/**
+ * =========================
+ * ACADEMIC: sessions, attendance, grades, audit
+ * =========================
+ */
+
+model Session {
+  id            String  @id @default(uuid()) @db.Uuid
+  institutionId String  @map("institution_id") @db.Uuid
+  sectionId     String  @map("section_id") @db.Uuid
+  periodId      String? @map("period_id") @db.Uuid
+
+  sessionDate DateTime @map("session_date") @db.Date
+  weekLabel   String?  @map("week_label")
+
+  topicTitle       String  @map("topic_title")
+  topicDescription String? @map("topic_description")
+
+  createdBy String @map("created_by") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  section       Section     @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  period        Period?     @relation(fields: [periodId], references: [id], onDelete: SetNull)
+  createdByUser User        @relation("session_created_by", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  attendance Attendance[]
+  grades     SessionGrade[]
+
+  // Risk: trigger session
+  riskAlerts RiskAlert[] @relation("risk_trigger_session")
+
+  // Tutoring links
+  tutoringAssignments TutoringAssignment[]
+
+  // ✅ inverse relation solicitada por Prisma
+  appEvents AppEvent[] // AppEvent.session
+
+  @@index([sectionId, sessionDate])
+  @@index([institutionId, sessionDate])
+  @@map("sessions")
+}
+
+model Attendance {
+  id            String @id @default(uuid()) @db.Uuid
+  institutionId String @map("institution_id") @db.Uuid
+  sessionId     String @map("session_id") @db.Uuid
+  studentId     String @map("student_id") @db.Uuid
+
+  status AttendanceStatus
+  note   String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  session     Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student     User        @relation("student_attendance", fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([sessionId, studentId])
+  @@index([studentId, createdAt])
+  @@map("attendance")
+}
+
+model SessionGrade {
+  id            String @id @default(uuid()) @db.Uuid
+  institutionId String @map("institution_id") @db.Uuid
+  sessionId     String @map("session_id") @db.Uuid
+  studentId     String @map("student_id") @db.Uuid
+
+  score          Decimal @db.Decimal(5, 2)
+  maxScore       Decimal @default(20) @map("max_score") @db.Decimal(5, 2)
+  teacherComment String? @map("teacher_comment")
+
+  gradedById String   @map("graded_by") @db.Uuid
+  gradedAt   DateTime @default(now()) @map("graded_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  session     Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  student  User @relation("student_session_grades", fields: [studentId], references: [id], onDelete: Restrict)
+  gradedBy User @relation("graded_by", fields: [gradedById], references: [id], onDelete: Restrict)
+
+  changes GradeChangeLog[]
+
+  @@unique([sessionId, studentId])
+  @@index([studentId, gradedAt])
+  @@index([sessionId, gradedAt])
+  @@map("session_grades")
+}
+
+model GradeChangeLog {
+  id             String @id @default(uuid()) @db.Uuid
+  institutionId  String @map("institution_id") @db.Uuid
+  sessionGradeId String @map("session_grade_id") @db.Uuid
+
+  changedById String   @map("changed_by") @db.Uuid
+  oldScore    Decimal  @map("old_score") @db.Decimal(5, 2)
+  newScore    Decimal  @map("new_score") @db.Decimal(5, 2)
+  reason      String?
+  changedAt   DateTime @default(now()) @map("changed_at")
+
+  // ✅ inverses ya existen en Institution, SessionGrade y User
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  sessionGrade SessionGrade @relation(fields: [sessionGradeId], references: [id], onDelete: Cascade)
+  changedBy    User         @relation("grade_changed_by", fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([sessionGradeId, changedAt])
+  @@index([changedById, changedAt])
+  @@map("grade_change_log")
+}
+
+/**
+ * =========================
+ * RISK (drop in grades)
+ * =========================
+ */
+
+model RiskAlert {
+  id               String  @id @default(uuid()) @db.Uuid
+  institutionId    String  @map("institution_id") @db.Uuid
+  studentId        String  @map("student_id") @db.Uuid
+  sectionId        String  @map("section_id") @db.Uuid
+  triggerSessionId String? @map("trigger_session_id") @db.Uuid
+
+  severity   RiskSeverity
+  status     RiskStatus     @default(OPEN)
+  reasonCode RiskReasonCode @map("reason_code")
+  details    Json? // baseline, últimos scores, threshold, window, etc.
+
+  resolvedAt   DateTime? @map("resolved_at")
+  resolvedById String?   @map("resolved_by") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  student     User        @relation("risk_student", fields: [studentId], references: [id], onDelete: Restrict)
+  section     Section     @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  triggerSession Session? @relation("risk_trigger_session", fields: [triggerSessionId], references: [id], onDelete: SetNull)
+  resolvedBy     User?    @relation("risk_resolved_by", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([sectionId, status])
+  @@index([studentId, createdAt])
+  @@index([institutionId, createdAt])
+  @@map("risk_alerts")
+}
+
+/**
+ * =========================
+ * TUTORING (AI assigned by teacher)
+ * =========================
+ */
+
+model TutoringAssignment {
+  id               String  @id @default(uuid()) @db.Uuid
+  institutionId    String  @map("institution_id") @db.Uuid
+  studentId        String  @map("student_id") @db.Uuid
+  sectionId        String  @map("section_id") @db.Uuid
+  relatedSessionId String? @map("related_session_id") @db.Uuid
+
+  assignedTopic String           @map("assigned_topic")
+  topicHash     String?          @map("topic_hash") @db.VarChar(64)
+
+  startsAt DateTime @map("starts_at")
+  endsAt   DateTime @map("ends_at")
+  status   AssignmentStatus @default(ASSIGNED)
+
+  assignedById String @map("assigned_by") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+
+  student        User     @relation("tutoring_student", fields: [studentId], references: [id], onDelete: Restrict)
+  section        Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  relatedSession Session? @relation(fields: [relatedSessionId], references: [id], onDelete: SetNull)
+
+  assignedBy User @relation("tutoring_assigned_by", fields: [assignedById], references: [id], onDelete: Restrict)
+
+  messages TutoringMessage[]
+  summary  TutoringSummary?
+
+  // ✅ inverse relation solicitada por Prisma
+  appEvents AppEvent[] // AppEvent.assignment
+
+  @@index([studentId, status])
+  @@index([sectionId, createdAt])
+  @@index([institutionId, startsAt])
+
+  // added for analytics + real queries
+  @@index([sectionId, topicHash])
+  @@index([institutionId, sectionId, createdAt])
+  @@index([institutionId, studentId, createdAt])
+
+  @@map("tutoring_assignments")
+}
+
+model TutoringMessage {
+  id            String @id @default(uuid()) @db.Uuid
+  institutionId String @map("institution_id") @db.Uuid
+  assignmentId  String @map("assignment_id") @db.Uuid
+
+  senderRole      SenderRole  @map("sender_role")
+  messageType     MessageType @map("message_type")
+  contentText     String?     @map("content_text")
+  contentMetadata Json?       @map("content_metadata")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  institution Institution        @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  assignment  TutoringAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId, createdAt])
+  @@index([institutionId, createdAt])
+  @@map("tutoring_messages")
+}
+
+model TutoringSummary {
+  assignmentId String @id @map("assignment_id") @db.Uuid
+
+  understandingLevel Int              @map("understanding_level") // 0..5 (validar en app)
+  emotion            Emotion
+  difficultyType     DifficultyType   @map("difficulty_type")
+  learningStrategy   LearningStrategy @map("learning_strategy")
+
+  studentMessageSample String? @map("student_message_sample")
+  tutorResponseSample  String? @map("tutor_response_sample")
+  teacherObservation   String? @map("teacher_observation")
+
+  modelProvider String? @map("model_provider")
+  modelVersion  String? @map("model_version")
+  confidence    Decimal? @db.Decimal(3, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  assignment TutoringAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([emotion])
+  @@index([difficultyType])
+  @@index([learningStrategy])
+  @@map("tutoring_summary")
+}
+
+/**
+ * =========================
+ * EVENTS (analytics + traceability)
+ * =========================
+ */
+
+model AppEvent {
+  id            String @id @default(uuid()) @db.Uuid
+  institutionId String @map("institution_id") @db.Uuid
+
+  eventType String @map("event_type")
+
+  actorUserId  String? @map("actor_user_id") @db.Uuid
+  studentId    String? @map("student_id") @db.Uuid
+  sectionId    String? @map("section_id") @db.Uuid
+  sessionId    String? @map("session_id") @db.Uuid
+  assignmentId String? @map("assignment_id") @db.Uuid
+
+  metadata   Json?
+  occurredAt DateTime @default(now()) @map("occurred_at")
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+
+  actorUser User? @relation("event_actor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  student   User? @relation("event_student", fields: [studentId], references: [id], onDelete: SetNull)
+
+  section    Section?            @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  session    Session?            @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  assignment TutoringAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+
+  @@index([institutionId, occurredAt])
+  @@index([eventType, occurredAt])
+  @@index([studentId, occurredAt])
+  @@map("app_events")
+}
+
+/**
+ * =========================
+ * AGGREGATES (dashboards)
+ * =========================
+ */
+
+model SectionWeeklyMetric {
+  id            String @id @default(uuid()) @db.Uuid
+  institutionId String @map("institution_id") @db.Uuid
+  sectionId     String @map("section_id") @db.Uuid
+
+  weekStart DateTime @map("week_start") @db.Date
+  weekEnd   DateTime @map("week_end") @db.Date
+
+  avgScore       Decimal? @map("avg_score") @db.Decimal(5, 2)
+  attendanceRate Decimal? @map("attendance_rate") @db.Decimal(5, 2)
+
+  numSessions Int @default(0) @map("num_sessions")
+  numStudents Int @default(0) @map("num_students")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  section     Section     @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, weekStart])
+  @@index([institutionId, weekStart])
+  @@map("section_weekly_metrics")
+}
+
+model StudentRiskSnapshot {
+  id            String @id @default(uuid()) @db.Uuid
+  institutionId String @map("institution_id") @db.Uuid
+  studentId     String @map("student_id") @db.Uuid
+  sectionId     String @map("section_id") @db.Uuid
+
+  snapshotDate DateTime     @map("snapshot_date") @db.Date
+  riskLevel    RiskSeverity @map("risk_level")
+  riskFactors  Json?        @map("risk_factors")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  student     User        @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  section     Section     @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, sectionId, snapshotDate])
+  @@index([institutionId, snapshotDate])
+  @@index([studentId, snapshotDate])
+  @@map("student_risk_snapshots")
+}
+
+model TopicDifficultyStat {
+  id            String @id @default(uuid()) @db.Uuid
+  institutionId String @map("institution_id") @db.Uuid
+  sectionId     String @map("section_id") @db.Uuid
+
+  topicHash String   @map("topic_hash")
+  fromDate  DateTime @map("from_date") @db.Date
+  toDate    DateTime @map("to_date") @db.Date
+
+  avgScore              Decimal? @map("avg_score") @db.Decimal(5, 2)
+  commonDifficultyTypes Json?    @map("common_difficulty_types")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  section     Section     @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@index([sectionId, topicHash])
+  @@index([institutionId, fromDate])
+  @@map("topic_difficulty_stats")
+}
+
+/**
+ * =========================
+ * NOTIFICATIONS (optional)
+ * =========================
+ */
+
+model Notification {
+  id            String @id @default(uuid()) @db.Uuid
+  institutionId String @map("institution_id") @db.Uuid
+  userId        String @map("user_id") @db.Uuid
+
+  type    NotificationType
+  title   String
+  body    String
+  payload Json?
+
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([institutionId, createdAt])
+  @@map("notifications")
+}

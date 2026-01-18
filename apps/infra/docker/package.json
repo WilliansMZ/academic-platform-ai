@@ -1,0 +1,8 @@
+{
+  "name": "infra",
+  "private": true,
+  "scripts": {
+    "infra:up": "docker compose --env-file .env up -d",
+    "infra:down": "docker compose down -v"
+  }
+}

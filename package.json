@@ -1,0 +1,24 @@
+{
+  "scripts": {
+    "dev:infra": "pnpm -C apps/infra/docker infra:up",
+    "dev:infra:down": "pnpm -C apps/infra/docker infra:down",
+    "wait:infra": "wait-on tcp:127.0.0.1:5433 tcp:127.0.0.1:6379 -t 60000",
+    "dev:core": "pnpm dev:infra && pnpm wait:infra && pnpm -C apps/core_api start:dev",
+    "dev:ai": "cmd /c \"cd apps\\ai_service && ..\\..\\.venv\\Scripts\\uvicorn app.main:app --reload --port 8000\"",
+    "health:core": "node -e \"require('http').get('http://localhost:3000/health',r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>console.log(d))}).on('error',e=>{console.error(e.message);process.exit(1)})\"",
+    "health:ai": "node -e \"require('http').get('http://localhost:8000/health',r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>console.log(d))}).on('error',e=>{console.error(e.message);process.exit(1)})\"",
+    "dev:all": "pnpm dev:infra && pnpm wait:infra && concurrently -n core,ai \"pnpm -C apps/core_api start:dev\" \"pnpm dev:ai\""
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "concurrently": "^9.2.1",
+    "wait-on": "^9.0.3"
+  },
+  "dependencies": {
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/passport": "^11.0.5",
+    "bcrypt": "^6.0.0",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1"
+  }
+}
