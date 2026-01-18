@@ -27,3 +27,23 @@ postgres_data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Coverage / testing
+coverage/
+.nyc_output/
+
+# TypeScript
+*.tsbuildinfo
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDEs
+.vscode/
+!.vscode/extensions.json
+.idea/
+
+# Prisma
+apps/**/prisma/migrations/**/migration_lock.toml
