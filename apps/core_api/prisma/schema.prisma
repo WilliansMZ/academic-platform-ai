@@ -6,8 +6,6 @@ datasource db {
   provider = "postgresql"
 }
 
-
-
 /**
  * =========================
  * ENUMS
@@ -188,13 +186,12 @@ model User {
   institutionId String @map("institution_id") @db.Uuid
 
   role         Role
-  email        String? @db.VarChar(255)
-  username     String? @db.VarChar(80)
-  phoneE164    String? @map("phone_e164") @db.VarChar(20)
-  passwordHash String? @map("password_hash")
-  isActive     Boolean @default(true) @map("is_active")
+  email        String?   @db.VarChar(255)
+  username     String?   @db.VarChar(80)
+  phoneE164    String?   @map("phone_e164") @db.VarChar(20)
+  passwordHash String?   @map("password_hash")
+  isActive     Boolean   @default(true) @map("is_active")
   lastLoginAt  DateTime? @map("last_login_at")
-
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -206,6 +203,7 @@ model User {
   studentProfile StudentProfile?
 
   refreshTokens RefreshToken[]
+  authSessions  AuthSession[] // añadido
 
   // Academic relations
   primarySections     Section[]        @relation("primary_teacher")
@@ -247,21 +245,27 @@ model RefreshToken {
   id     String @id @default(uuid()) @db.Uuid
   userId String @map("user_id") @db.Uuid
 
-  tokenHash String   @map("token_hash")
-  expiresAt DateTime @map("expires_at")
-  revokedAt DateTime? @map("revoked_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  sessionId String? @map("session_id") @db.Uuid
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jti String? @unique @map("jti") @db.VarChar(64)
+
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session AuthSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([sessionId])
   @@index([expiresAt])
   @@map("refresh_tokens")
 }
 
 model TeacherProfile {
-  userId    String @id @map("user_id") @db.Uuid
-  fullName  String @map("full_name")
+  userId    String  @id @map("user_id") @db.Uuid
+  fullName  String  @map("full_name")
   phone     String?
   specialty String?
 
@@ -274,8 +278,8 @@ model TeacherProfile {
 }
 
 model StudentProfile {
-  userId       String @id @map("user_id") @db.Uuid
-  fullName     String @map("full_name")
+  userId       String  @id @map("user_id") @db.Uuid
+  fullName     String  @map("full_name")
   contactPhone String? @map("contact_phone")
 
   gradeLevel   String? @map("grade_level")
@@ -596,11 +600,11 @@ model TutoringAssignment {
   sectionId        String  @map("section_id") @db.Uuid
   relatedSessionId String? @map("related_session_id") @db.Uuid
 
-  assignedTopic String           @map("assigned_topic")
-  topicHash     String?          @map("topic_hash") @db.VarChar(64)
+  assignedTopic String  @map("assigned_topic")
+  topicHash     String? @map("topic_hash") @db.VarChar(64)
 
-  startsAt DateTime @map("starts_at")
-  endsAt   DateTime @map("ends_at")
+  startsAt DateTime         @map("starts_at")
+  endsAt   DateTime         @map("ends_at")
   status   AssignmentStatus @default(ASSIGNED)
 
   assignedById String @map("assigned_by") @db.Uuid
@@ -625,12 +629,10 @@ model TutoringAssignment {
   @@index([studentId, status])
   @@index([sectionId, createdAt])
   @@index([institutionId, startsAt])
-
   // added for analytics + real queries
   @@index([sectionId, topicHash])
   @@index([institutionId, sectionId, createdAt])
   @@index([institutionId, studentId, createdAt])
-
   @@map("tutoring_assignments")
 }
 
@@ -666,8 +668,8 @@ model TutoringSummary {
   tutorResponseSample  String? @map("tutor_response_sample")
   teacherObservation   String? @map("teacher_observation")
 
-  modelProvider String? @map("model_provider")
-  modelVersion  String? @map("model_version")
+  modelProvider String?  @map("model_provider")
+  modelVersion  String?  @map("model_version")
   confidence    Decimal? @db.Decimal(3, 2)
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -815,4 +817,30 @@ model Notification {
   @@index([userId, readAt])
   @@index([institutionId, createdAt])
   @@map("notifications")
+}
+
+/**
+ * =========================
+ * Auth
+ * =========================
+ */
+
+model AuthSession {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  // opcional pero útil
+  device    String? @map("device") @db.VarChar(120)
+  ip        String? @map("ip") @db.VarChar(45)
+  userAgent String? @map("user_agent") @db.VarChar(255)
+
+  createdAt  DateTime  @default(now()) @map("created_at")
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at")
+  revokedAt  DateTime? @map("revoked_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+
+  @@index([userId])
+  @@map("auth_sessions")
 }
