@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessTokenPayload } from './types/jwt-payload.type';
 import { randomUUID } from 'crypto';
+import { Role } from '@prisma/client';
 
 import { compareHash, hashValue } from './utils/crypto.util';
 import { ttlToMs } from './utils/ttl.util';
@@ -114,6 +115,16 @@ export class AuthService {
     const ok = await compareHash(password, user.passwordHash);
     if (!ok) throw new UnauthorizedException('Invalid credentials');
 
+    // ✅ MVP: SUPERADMIN no habilitado aún (evita 500 y deja claro el comportamiento)
+    if (user.role === Role.SUPERADMIN) {
+      throw new ForbiddenException('SUPERADMIN login no habilitado en el MVP');
+    }
+
+    // ✅ En MVP, usuarios tenant deben tener institutionId
+    if (!user.institutionId) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     const accessPayload: AccessTokenPayload = {
       sub: user.id,
       institutionId: user.institutionId,
@@ -167,9 +178,20 @@ export class AuthService {
 
     const user = await this.prisma.user.findFirst({
       where: { id: payload.sub, deletedAt: null, isActive: true },
-      select: { id: true, institutionId: true, role: true, email: true, username: true },
+      select: {
+        id: true,
+        institutionId: true,
+        role: true,
+        email: true,
+        username: true,
+      },
     });
     if (!user) throw new UnauthorizedException('User inactive');
+
+    // ✅ MVP: refresh solo para usuarios tenant (no SUPERADMIN) y con institutionId
+    if (user.role === Role.SUPERADMIN || !user.institutionId) {
+      throw new UnauthorizedException('User inactive');
+    }
 
     // ✅ sesión viva
     const session = await this.prisma.authSession.findFirst({

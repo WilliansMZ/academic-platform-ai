@@ -13,6 +13,7 @@ datasource db {
  */
 
 enum Role {
+  SUPERADMIN
   INSTITUTION_ADMIN
   TEACHER
   STUDENT
@@ -176,14 +177,15 @@ model InstitutionSettings {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  institution Institution? @relation(fields: [institutionId], references: [id], onDelete: Cascade)
 
   @@map("institution_settings")
 }
 
 model User {
   id            String @id @default(uuid()) @db.Uuid
-  institutionId String @map("institution_id") @db.Uuid
+  institutionId String? @map("institution_id") @db.Uuid
+  
 
   role         Role
   email        String?   @db.VarChar(255)
@@ -197,7 +199,7 @@ model User {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  institution Institution? @relation(fields: [institutionId], references: [id], onDelete: Restrict)
 
   teacherProfile TeacherProfile?
   studentProfile StudentProfile?
