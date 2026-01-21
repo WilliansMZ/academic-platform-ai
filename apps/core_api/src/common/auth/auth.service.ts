@@ -55,7 +55,7 @@ export class AuthService {
         userId,
         sessionId,
         tokenHash,
-        jti, // ✅ guardar jti
+        jti,
         expiresAt: this.getRefreshExpiresAt(),
       },
     });
@@ -115,22 +115,26 @@ export class AuthService {
     const ok = await compareHash(password, user.passwordHash);
     if (!ok) throw new UnauthorizedException('Invalid credentials');
 
-    // ✅ MVP: SUPERADMIN no habilitado aún (evita 500 y deja claro el comportamiento)
-    if (user.role === Role.SUPERADMIN) {
+    // ✅ Feature flag (controlado por env)
+    const allowSuperadmin = (process.env.ALLOW_SUPERADMIN_LOGIN ?? 'false') === 'true';
+
+    // ✅ Bloqueo controlado del SUPERADMIN si no está habilitado por env
+    if (user.role === Role.SUPERADMIN && !allowSuperadmin) {
       throw new ForbiddenException('SUPERADMIN login no habilitado en el MVP');
     }
 
-    // ✅ En MVP, usuarios tenant deben tener institutionId
-    if (!user.institutionId) {
+    // ✅ Usuarios tenant deben tener institutionId
+    if (user.role !== Role.SUPERADMIN && !user.institutionId) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // ✅ Access token payload (SUPERADMIN => institutionId null)
     const accessPayload: AccessTokenPayload = {
       sub: user.id,
-      institutionId: user.institutionId,
+      institutionId: user.institutionId ?? null,
       role: user.role,
-      email: user.email,
-      username: user.username,
+      email: user.email ?? null,
+      username: user.username ?? null,
     };
 
     // ✅ multi-dispositivo: nueva sesión
@@ -154,10 +158,10 @@ export class AuthService {
       refreshToken: refresh.token,
       user: {
         id: user.id,
-        institutionId: user.institutionId,
+        institutionId: user.institutionId ?? null,
         role: user.role,
-        email: user.email,
-        username: user.username,
+        email: user.email ?? null,
+        username: user.username ?? null,
       },
     };
   }
@@ -188,8 +192,16 @@ export class AuthService {
     });
     if (!user) throw new UnauthorizedException('User inactive');
 
-    // ✅ MVP: refresh solo para usuarios tenant (no SUPERADMIN) y con institutionId
-    if (user.role === Role.SUPERADMIN || !user.institutionId) {
+    // ✅ Feature flag (controlado por env)
+    const allowSuperadmin = (process.env.ALLOW_SUPERADMIN_LOGIN ?? 'false') === 'true';
+
+    // ✅ Si SUPERADMIN y flag=false => bloquea (consistente con login)
+    if (user.role === Role.SUPERADMIN && !allowSuperadmin) {
+      throw new UnauthorizedException('User inactive');
+    }
+
+    // ✅ Tenant users deben tener institutionId
+    if (user.role !== Role.SUPERADMIN && !user.institutionId) {
       throw new UnauthorizedException('User inactive');
     }
 
@@ -218,7 +230,7 @@ export class AuthService {
       throw new ForbiddenException('Refresh token reuse detected');
     }
 
-    // (Opcional pero recomendado) confirmar que el token recibido coincide con el hash guardado
+    // confirmar hash
     const ok = await compareHash(refreshToken, record.tokenHash);
     if (!ok) {
       await this.revokeSession(session.id);
@@ -227,10 +239,10 @@ export class AuthService {
 
     const newAccessPayload: AccessTokenPayload = {
       sub: user.id,
-      institutionId: user.institutionId,
+      institutionId: user.institutionId ?? null,
       role: user.role,
-      email: user.email,
-      username: user.username,
+      email: user.email ?? null,
+      username: user.username ?? null,
     };
 
     const newRefreshPayload: RefreshTokenPayload = {
@@ -241,7 +253,7 @@ export class AuthService {
     const accessTokenNew = await this.signAccessToken(newAccessPayload);
     const refreshNew = await this.signRefreshToken(newRefreshPayload);
 
-    // ✅ transacción: revoke viejo + crear nuevo
+    // ✅ transacción: revoke viejo + crear nuevo + update lastSeen
     await this.prisma.$transaction([
       this.prisma.refreshToken.update({
         where: { id: record.id },
