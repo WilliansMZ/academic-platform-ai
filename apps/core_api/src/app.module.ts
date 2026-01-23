@@ -7,6 +7,7 @@ import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './common/auth/auth.module';
 import { InstitutionsModule } from './modules/institutions/institutions.module';
 import { SubjectsModule } from './modules/subjects/subjects.module';
+import { SectionsModule } from './modules/sections/sections.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -15,6 +16,7 @@ import { SubjectsModule } from './modules/subjects/subjects.module';
     UsersModule,
     InstitutionsModule,
     SubjectsModule,
+    SectionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
