@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import {
   IsEmail,
@@ -11,11 +11,12 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-class CreateTeacherProfileDto {
-  @ApiProperty()
+class UpdateTeacherProfileDto {
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   @Length(3, 120)
-  fullName!: string;
+  fullName?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -30,11 +31,12 @@ class CreateTeacherProfileDto {
   specialty?: string;
 }
 
-class CreateStudentProfileDto {
-  @ApiProperty()
+class UpdateStudentProfileDto {
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   @Length(3, 120)
-  fullName!: string;
+  fullName?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -55,10 +57,11 @@ class CreateStudentProfileDto {
   sectionLabel?: string;
 }
 
-export class CreateUserDto {
-  @ApiProperty({ enum: Role })
+export class UpdateUserDto {
+  @ApiPropertyOptional({ enum: Role, description: 'No permitir SUPERADMIN desde tenant' })
+  @IsOptional()
   @IsEnum(Role)
-  role!: Role;
+  role?: Role;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -73,27 +76,27 @@ export class CreateUserDto {
   username?: string;
 
   @ApiPropertyOptional({ description: 'E.164 +51999999999' })
-  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   @Length(8, 20)
   @Matches(/^\+?[1-9]\d{7,19}$/)
   phoneE164?: string;
 
-  @ApiProperty({ minLength: 8 })
+  @ApiPropertyOptional({ description: 'Change password' })
+  @IsOptional()
   @IsString()
   @Length(8, 72)
-  password!: string;
+  password?: string;
 
-  @ApiPropertyOptional({ type: CreateTeacherProfileDto })
+  @ApiPropertyOptional({ type: UpdateTeacherProfileDto })
   @IsOptional()
   @ValidateNested()
-  @Type(() => CreateTeacherProfileDto)
-  teacherProfile?: CreateTeacherProfileDto;
+  @Type(() => UpdateTeacherProfileDto)
+  teacherProfile?: UpdateTeacherProfileDto;
 
-  @ApiPropertyOptional({ type: CreateStudentProfileDto })
+  @ApiPropertyOptional({ type: UpdateStudentProfileDto })
   @IsOptional()
   @ValidateNested()
-  @Type(() => CreateStudentProfileDto)
-  studentProfile?: CreateStudentProfileDto;
+  @Type(() => UpdateStudentProfileDto)
+  studentProfile?: UpdateStudentProfileDto;
 }
