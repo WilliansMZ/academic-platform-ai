@@ -10,6 +10,11 @@ import { SubjectsModule } from './modules/subjects/subjects.module';
 import { SectionsModule } from './modules/sections/sections.module';
 import { EnrollmentsModule } from './modules/enrollments/enrollments.module';
 import { MyModule } from './modules/my/my.module';
+import { SessionsModule } from './modules/sessions/sessions.module';
+
+
+console.log('🔥 CORE_API AppModule LOADED');
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -21,6 +26,7 @@ import { MyModule } from './modules/my/my.module';
     SectionsModule,
     EnrollmentsModule,
     MyModule,
+    SessionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
