@@ -11,9 +11,7 @@ import { SectionsModule } from './modules/sections/sections.module';
 import { EnrollmentsModule } from './modules/enrollments/enrollments.module';
 import { MyModule } from './modules/my/my.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
-
-
-console.log('🔥 CORE_API AppModule LOADED');
+import { AttendanceModule } from './modules/attendance/attendance.module';
 
 @Module({
   imports: [
@@ -27,6 +25,7 @@ console.log('🔥 CORE_API AppModule LOADED');
     EnrollmentsModule,
     MyModule,
     SessionsModule,
+    AttendanceModule,
   ],
   controllers: [AppController],
   providers: [AppService],
